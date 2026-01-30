@@ -1,6 +1,6 @@
 {
-  "name": "Example Plugin",
-  "author": "John Doe",
+  "name": "pc-on-off",
+  "author": "proilyxa",
   "flags": ["debug", "_root"],
   "api_version": 1,
   "publish": {

@@ -14,7 +14,7 @@ class Plugin:
     async def long_running(self):
         await asyncio.sleep(15)
         # Passing through a bunch of random data, just as an example
-        await decky.emit("timer_event", "Hello from the backend!", True, 2)
+        await decky.emit("timer_event", "Hello from the backend!!!", True, 2)
 
     # Asyncio-compatible long-running code, executed in a task when the plugin is loaded
     async def _main(self):
