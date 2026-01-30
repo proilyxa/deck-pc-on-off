@@ -316,7 +316,7 @@ function Content() {
 
   if (loading) {
     return (
-      <PanelSection title="Wake on LAN">
+      <PanelSection>
         <PanelSectionRow>
           <div>Loading...</div>
         </PanelSectionRow>
@@ -325,7 +325,7 @@ function Content() {
   }
 
   return (
-    <PanelSection title="Wake on LAN">
+    <PanelSection>
       <PanelSectionRow>
         <ButtonItem
           layout="below"
@@ -431,7 +431,7 @@ export default definePlugin(() => {
     // The name shown in various decky menus
     name: "PC On/Off",
     // The element displayed at the top of your plugin's menu
-    titleView: <div className={staticClasses.Title}>Wake on LAN</div>,
+    titleView: <div className={staticClasses.Title}>PC On/Off</div>,
     // The content of your plugin's menu
     content: <Content />,
     // The icon displayed in the plugin list
