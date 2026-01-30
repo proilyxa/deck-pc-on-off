@@ -165,8 +165,12 @@ class Plugin:
             # Get MAC address from IP
             mac_address = self._get_mac_from_ip(ip_address)
             
+            # Generate new ID (starting from 1, avoiding duplicates)
+            max_id = max([h["id"] for h in self.hosts], default=0)
+            new_id = max_id + 1
+            
             host = {
-                "id": len(self.hosts),
+                "id": new_id,
                 "name": name,
                 "ip": ip_address,
                 "mac": mac_address
