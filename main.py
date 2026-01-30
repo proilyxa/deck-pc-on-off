@@ -40,34 +40,65 @@ class Plugin:
         """Get MAC address from IP using ARP"""
         try:
             # First, try to ping the host to populate ARP cache
-            ping_cmd = ["ping", "-c", "1", "-W", "1", ip_address]
-            subprocess.run(ping_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2)
+            ping_paths = ["/usr/bin/ping", "/bin/ping", "ping"]
+            for ping_path in ping_paths:
+                try:
+                    ping_cmd = [ping_path, "-c", "1", "-W", "1", ip_address]
+                    subprocess.run(ping_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3)
+                    break
+                except FileNotFoundError:
+                    continue
             
-            # Try to get MAC from ARP table
-            arp_cmd = ["arp", "-n", ip_address]
-            result = subprocess.run(arp_cmd, capture_output=True, text=True, timeout=2)
+            # Try multiple methods to get MAC address
             
-            # Parse ARP output to find MAC address
-            # Format: Address HWtype HWaddress Flags Mask Iface
-            for line in result.stdout.split('\n'):
-                if ip_address in line:
-                    # Look for MAC address pattern
-                    mac_match = re.search(r'([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})', line)
-                    if mac_match:
-                        mac = mac_match.group(0)
-                        decky.logger.info(f"Found MAC {mac} for IP {ip_address}")
-                        return mac
+            # Method 1: Try ip neigh (most common on modern Linux)
+            ip_paths = ["/usr/bin/ip", "/bin/ip", "/sbin/ip", "ip"]
+            for ip_path in ip_paths:
+                try:
+                    neigh_cmd = [ip_path, "neigh", "show", ip_address]
+                    result = subprocess.run(neigh_cmd, capture_output=True, text=True, timeout=3)
+                    if result.returncode == 0:
+                        mac_match = re.search(r'([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})', result.stdout)
+                        if mac_match:
+                            mac = mac_match.group(0)
+                            decky.logger.info(f"Found MAC {mac} for IP {ip_address} via ip neigh")
+                            return mac
+                except FileNotFoundError:
+                    continue
             
-            # If not found in ARP, try ip neigh (newer systems)
-            neigh_cmd = ["ip", "neigh", "show", ip_address]
-            result = subprocess.run(neigh_cmd, capture_output=True, text=True, timeout=2)
-            mac_match = re.search(r'([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})', result.stdout)
-            if mac_match:
-                mac = mac_match.group(0)
-                decky.logger.info(f"Found MAC {mac} for IP {ip_address} via ip neigh")
-                return mac
+            # Method 2: Try arp command
+            arp_paths = ["/usr/sbin/arp", "/usr/bin/arp", "/sbin/arp", "arp"]
+            for arp_path in arp_paths:
+                try:
+                    arp_cmd = [arp_path, "-n", ip_address]
+                    result = subprocess.run(arp_cmd, capture_output=True, text=True, timeout=3)
+                    if result.returncode == 0:
+                        # Parse ARP output to find MAC address
+                        for line in result.stdout.split('\n'):
+                            if ip_address in line:
+                                mac_match = re.search(r'([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})', line)
+                                if mac_match:
+                                    mac = mac_match.group(0)
+                                    decky.logger.info(f"Found MAC {mac} for IP {ip_address} via arp")
+                                    return mac
+                except FileNotFoundError:
+                    continue
             
-            raise ValueError(f"Could not find MAC address for {ip_address}. Make sure the host is reachable.")
+            # Method 3: Try reading /proc/net/arp directly
+            try:
+                with open('/proc/net/arp', 'r') as f:
+                    for line in f:
+                        if ip_address in line:
+                            parts = line.split()
+                            if len(parts) >= 4:
+                                mac = parts[3]
+                                if re.match(r'([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})', mac):
+                                    decky.logger.info(f"Found MAC {mac} for IP {ip_address} via /proc/net/arp")
+                                    return mac
+            except Exception as e:
+                decky.logger.warning(f"Could not read /proc/net/arp: {e}")
+            
+            raise ValueError(f"Could not find MAC address for {ip_address}. Make sure the host is reachable and on the same network.")
             
         except subprocess.TimeoutExpired:
             raise ValueError(f"Timeout while trying to reach {ip_address}")
