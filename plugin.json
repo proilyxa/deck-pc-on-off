@@ -1,11 +1,11 @@
 {
   "name": "pc-on-off",
   "author": "proilyxa",
-  "flags": ["debug", "_root"],
+  "flags": ["_root"],
   "api_version": 1,
   "publish": {
-    "tags": ["template", "root"],
-    "description": "Decky example plugin.",
+    "tags": ["utility", "network", "wol"],
+    "description": "Wake on LAN plugin for Steam Deck. Wake up your PC or other devices from sleep using WOL magic packets.",
     "image": "https://opengraph.githubassets.com/1/SteamDeckHomebrew/PluginLoader"
   }
 }

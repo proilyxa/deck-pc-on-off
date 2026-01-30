@@ -2,114 +2,333 @@ import {
   ButtonItem,
   PanelSection,
   PanelSectionRow,
-  Navigation,
+  TextField,
+  ConfirmModal,
+  showModal,
   staticClasses
 } from "@decky/ui";
 import {
-  addEventListener,
-  removeEventListener,
   callable,
   definePlugin,
   toaster,
-  // routerHook
 } from "@decky/api"
-import { useState } from "react";
-import { FaShip } from "react-icons/fa";
+import { useState, useEffect, FC } from "react";
+import { FaPowerOff, FaPlus, FaTrash, FaEdit } from "react-icons/fa";
 
-// import logo from "../assets/logo.png";
+interface Host {
+  id: number;
+  name: string;
+  ip: string;
+  mac?: string;
+}
 
-// This function calls the python function "add", which takes in two numbers and returns their sum (as a number)
-// Note the type annotations:
-//  the first one: [first: number, second: number] is for the arguments
-//  the second one: number is for the return value
-const add = callable<[first: number, second: number], number>("add");
+interface WakeResult {
+  success: boolean;
+  message?: string;
+  error?: string;
+}
 
-// This function calls the python function "start_timer", which takes in no arguments and returns nothing.
-// It starts a (python) timer which eventually emits the event 'timer_event'
-const startTimer = callable<[], void>("start_timer");
+interface HostResult {
+  success: boolean;
+  host?: Host;
+  error?: string;
+}
 
-function Content() {
-  const [result, setResult] = useState<number | undefined>();
+// Backend API calls
+const getHosts = callable<[], Host[]>("get_hosts");
+const addHost = callable<[name: string, ip: string], HostResult>("add_host");
+const updateHost = callable<[id: number, name: string, ip: string], HostResult>("update_host");
+const deleteHost = callable<[id: number], { success: boolean; error?: string }>("delete_host");
+const wakeHost = callable<[id: number], WakeResult>("wake_host");
 
-  const onClick = async () => {
-    const result = await add(Math.random(), Math.random());
-    setResult(result);
+interface HostFormProps {
+  host?: Host;
+  onSave: () => void;
+  onCancel: () => void;
+}
+
+const HostForm: FC<HostFormProps> = ({ host, onSave, onCancel }) => {
+  const [name, setName] = useState(host?.name || "");
+  const [ip, setIp] = useState(host?.ip || "");
+
+  const handleSave = async () => {
+    if (!name || !ip) {
+      toaster.toast({
+        title: "Error",
+        body: "Name and IP address are required"
+      });
+      return;
+    }
+
+    try {
+      const result = host
+        ? await updateHost(host.id, name, ip)
+        : await addHost(name, ip);
+
+      if (result.success) {
+        toaster.toast({
+          title: "Success",
+          body: host ? "Host updated" : "Host added"
+        });
+        onSave();
+      } else {
+        toaster.toast({
+          title: "Error",
+          body: result.error || "Unknown error"
+        });
+      }
+    } catch (error) {
+      toaster.toast({
+        title: "Error",
+        body: String(error)
+      });
+    }
   };
 
   return (
-    <PanelSection title="Panel Section">
-      <PanelSectionRow>
+    <div style={{ padding: "10px" }}>
+      <div style={{ marginBottom: "10px" }}>
+        <TextField
+          label="Name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+      </div>
+      <div style={{ marginBottom: "20px" }}>
+        <TextField
+          label="IP Address or Hostname"
+          value={ip}
+          onChange={(e) => setIp(e.target.value)}
+        />
+      </div>
+      <div style={{ display: "flex", gap: "10px" }}>
         <ButtonItem
           layout="below"
-          onClick={onClick}
+          onClick={handleSave}
         >
-          {result ?? "Add two numbers via Python"}
+          Save
         </ButtonItem>
-      </PanelSectionRow>
-      <PanelSectionRow>
         <ButtonItem
           layout="below"
-          onClick={() => startTimer()}
+          onClick={onCancel}
         >
-          {"Start Python timer"}
+          Cancel
         </ButtonItem>
-      </PanelSectionRow>
+      </div>
+    </div>
+  );
+};
 
-      {/* <PanelSectionRow>
-        <div style={{ display: "flex", justifyContent: "center" }}>
-          <img src={logo} />
-        </div>
-      </PanelSectionRow> */}
+function Content() {
+  const [hosts, setHosts] = useState<Host[]>([]);
+  const [loading, setLoading] = useState(true);
 
-      {/*<PanelSectionRow>
-        <ButtonItem
-          layout="below"
-          onClick={() => {
-            Navigation.Navigate("/decky-plugin-test");
-            Navigation.CloseSideMenus();
+  const loadHosts = async () => {
+    try {
+      const result = await getHosts();
+      setHosts(result);
+    } catch (error) {
+      toaster.toast({
+        title: "Error",
+        body: "Failed to load hosts"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadHosts();
+  }, []);
+
+  const handleWake = async (hostId: number, hostName: string) => {
+    try {
+      const result = await wakeHost(hostId);
+      if (result.success) {
+        toaster.toast({
+          title: "Sent",
+          body: `WOL packet sent to ${hostName}`
+        });
+      } else {
+        toaster.toast({
+          title: "Error",
+          body: result.error || "Failed to send WOL packet"
+        });
+      }
+    } catch (error) {
+      toaster.toast({
+        title: "Error",
+        body: String(error)
+      });
+    }
+  };
+
+  const handleDelete = (host: Host) => {
+    showModal(
+      <ConfirmModal
+        strTitle="Delete Host?"
+        strDescription={`Are you sure you want to delete "${host.name}"?`}
+        strOKButtonText="Delete"
+        strCancelButtonText="Cancel"
+        onOK={async () => {
+          try {
+            const result = await deleteHost(host.id);
+            if (result.success) {
+              toaster.toast({
+                title: "Success",
+                body: "Host deleted"
+              });
+              loadHosts();
+            } else {
+              toaster.toast({
+                title: "Error",
+                body: result.error || "Failed to delete host"
+              });
+            }
+          } catch (error) {
+            toaster.toast({
+              title: "Error",
+              body: String(error)
+            });
+          }
+        }}
+      />
+    );
+  };
+
+  const handleAdd = () => {
+    showModal(
+      <ConfirmModal
+        strTitle="Add Host"
+        bAllowFullSize={true}
+        onOK={() => {}}
+        onCancel={() => {}}
+      >
+        <HostForm
+          onSave={() => {
+            loadHosts();
           }}
+          onCancel={() => {}}
+        />
+      </ConfirmModal>
+    );
+  };
+
+  const handleEdit = (host: Host) => {
+    showModal(
+      <ConfirmModal
+        strTitle="Edit Host"
+        bAllowFullSize={true}
+        onOK={() => {}}
+        onCancel={() => {}}
+      >
+        <HostForm
+          host={host}
+          onSave={() => {
+            loadHosts();
+          }}
+          onCancel={() => {}}
+        />
+      </ConfirmModal>
+    );
+  };
+
+  if (loading) {
+    return (
+      <PanelSection title="Wake on LAN">
+        <PanelSectionRow>
+          <div>Loading...</div>
+        </PanelSectionRow>
+      </PanelSection>
+    );
+  }
+
+  return (
+    <PanelSection title="Wake on LAN">
+      {hosts.length === 0 ? (
+        <PanelSectionRow>
+          <div style={{ padding: "10px", textAlign: "center", opacity: 0.7 }}>
+            No saved hosts
+          </div>
+        </PanelSectionRow>
+      ) : (
+        hosts.map((host) => (
+          <PanelSectionRow key={host.id}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <div style={{ flex: 1 }}>
+                  <ButtonItem
+                    layout="below"
+                    onClick={() => handleWake(host.id, host.name)}
+                  >
+                    <div style={{ 
+                      display: "flex", 
+                      alignItems: "center", 
+                      gap: "8px", 
+                      justifyContent: "center",
+                      backgroundColor: "#4ade80",
+                      color: "#000",
+                      fontWeight: "bold",
+                      padding: "8px",
+                      borderRadius: "4px"
+                    }}>
+                      <FaPowerOff />
+                      <span>{host.name}</span>
+                    </div>
+                  </ButtonItem>
+                </div>
+                <div style={{ display: "flex", gap: "5px" }}>
+                  <ButtonItem
+                    layout="below"
+                    onClick={() => handleEdit(host)}
+                  >
+                    <FaEdit />
+                  </ButtonItem>
+                  <ButtonItem
+                    layout="below"
+                    onClick={() => handleDelete(host)}
+                  >
+                    <FaTrash />
+                  </ButtonItem>
+                </div>
+              </div>
+              <div style={{ fontSize: "0.85em", opacity: 0.7 }}>
+                IP: {host.ip}
+              </div>
+            </div>
+          </PanelSectionRow>
+        ))
+      )}
+      <PanelSectionRow>
+        <ButtonItem
+          layout="below"
+          onClick={handleAdd}
         >
-          Router
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }}>
+            <FaPlus />
+            <span>Add Host</span>
+          </div>
         </ButtonItem>
-      </PanelSectionRow>*/}
+      </PanelSectionRow>
     </PanelSection>
   );
 };
 
 export default definePlugin(() => {
-  console.log("Template plugin initializing, this is called once on frontend startup")
-
-  // serverApi.routerHook.addRoute("/decky-plugin-test", DeckyPluginRouterTest, {
-  //   exact: true,
-  // });
-
-  // Add an event listener to the "timer_event" event from the backend
-  const listener = addEventListener<[
-    test1: string,
-    test2: boolean,
-    test3: number
-  ]>("timer_event", (test1, test2, test3) => {
-    console.log("Template got timer_event with:", test1, test2, test3)
-    toaster.toast({
-      title: "template got timer_event",
-      body: `${test1}, ${test2}, ${test3}`
-    });
-  });
+  console.log("PC On/Off plugin initializing")
 
   return {
     // The name shown in various decky menus
-    name: "Test Plugin",
+    name: "PC On/Off",
     // The element displayed at the top of your plugin's menu
-    titleView: <div className={staticClasses.Title}>Decky Example Plugin</div>,
+    titleView: <div className={staticClasses.Title}>Wake on LAN</div>,
     // The content of your plugin's menu
     content: <Content />,
     // The icon displayed in the plugin list
-    icon: <FaShip />,
+    icon: <FaPowerOff />,
     // The function triggered when your plugin unloads
     onDismount() {
-      console.log("Unloading")
-      removeEventListener("timer_event", listener);
-      // serverApi.routerHook.removeRoute("/decky-plugin-test");
+      console.log("PC On/Off plugin unloading")
     },
   };
 });
