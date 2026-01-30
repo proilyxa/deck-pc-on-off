@@ -114,7 +114,7 @@
             "dependsOrder": "sequence",
             "group": "none",
             "dependsOn": [
-                "build",
+                "cli-build",
                 "deploy"
             ],
             "problemMatcher": []
