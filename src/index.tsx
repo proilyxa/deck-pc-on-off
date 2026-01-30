@@ -347,8 +347,8 @@ function Content() {
       ) : (
         hosts.map((host) => {
           const isWaking = wakingHostId === host.id;
-          const displayName = host.name.length > 15 
-            ? host.name.substring(0, 15) + ".." 
+          const displayName = host.name.length > 20 
+            ? host.name.substring(0, 20) + ".." 
             : host.name;
           
           return (
@@ -404,10 +404,7 @@ function Content() {
                   gap: "8px"
                 }}>
                   <span style={{ 
-                    fontWeight: "500",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap"
+                    fontWeight: "500"
                   }}>
                     {displayName}
                   </span>

@@ -187,9 +187,25 @@ class Plugin:
             if not name or not ip_address:
                 return {"success": False, "error": "Name and IP address are required"}
             
-            # Get MAC address from IP
-            mac_address = self._get_mac_from_ip(ip_address)
+            # Find existing host
+            old_host = None
+            for host in self.hosts:
+                if host["id"] == host_id:
+                    old_host = host
+                    break
             
+            if not old_host:
+                return {"success": False, "error": "Host not found"}
+            
+            # Only get new MAC if IP changed
+            if old_host["ip"] != ip_address:
+                decky.logger.info(f"IP changed from {old_host['ip']} to {ip_address}, getting new MAC")
+                mac_address = self._get_mac_from_ip(ip_address)
+            else:
+                decky.logger.info(f"IP unchanged, keeping existing MAC {old_host.get('mac', 'N/A')}")
+                mac_address = old_host.get("mac", "")
+            
+            # Update host
             for i, host in enumerate(self.hosts):
                 if host["id"] == host_id:
                     self.hosts[i] = {
