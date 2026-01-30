@@ -36,6 +36,28 @@ class Plugin:
         except Exception as e:
             decky.logger.error(f"Error saving hosts: {e}")
 
+    def _is_valid_mac(self, mac: str) -> bool:
+        """Check if MAC address is valid and not a placeholder"""
+        if not mac:
+            return False
+        
+        # Normalize MAC address
+        mac_clean = mac.replace(':', '').replace('-', '').replace('.', '').upper()
+        
+        # Check if it's all zeros (incomplete/not found)
+        if mac_clean == '000000000000':
+            return False
+        
+        # Check if it's all F's (broadcast)
+        if mac_clean == 'FFFFFFFFFFFF':
+            return False
+        
+        # Check if it matches pattern like 00:00:00:00:00:00
+        if re.match(r'^(00[:-]?){6}$', mac.lower()):
+            return False
+        
+        return True
+
     def _get_mac_from_ip(self, ip_address: str) -> str:
         """Get MAC address from IP using ARP"""
         try:
@@ -61,8 +83,11 @@ class Plugin:
                         mac_match = re.search(r'([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})', result.stdout)
                         if mac_match:
                             mac = mac_match.group(0)
-                            decky.logger.info(f"Found MAC {mac} for IP {ip_address} via ip neigh")
-                            return mac
+                            if self._is_valid_mac(mac):
+                                decky.logger.info(f"Found MAC {mac} for IP {ip_address} via ip neigh")
+                                return mac
+                            else:
+                                decky.logger.warning(f"Invalid MAC {mac} for IP {ip_address}")
                 except FileNotFoundError:
                     continue
             
@@ -79,8 +104,11 @@ class Plugin:
                                 mac_match = re.search(r'([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})', line)
                                 if mac_match:
                                     mac = mac_match.group(0)
-                                    decky.logger.info(f"Found MAC {mac} for IP {ip_address} via arp")
-                                    return mac
+                                    if self._is_valid_mac(mac):
+                                        decky.logger.info(f"Found MAC {mac} for IP {ip_address} via arp")
+                                        return mac
+                                    else:
+                                        decky.logger.warning(f"Invalid MAC {mac} for IP {ip_address}")
                 except FileNotFoundError:
                     continue
             
@@ -93,8 +121,11 @@ class Plugin:
                             if len(parts) >= 4:
                                 mac = parts[3]
                                 if re.match(r'([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})', mac):
-                                    decky.logger.info(f"Found MAC {mac} for IP {ip_address} via /proc/net/arp")
-                                    return mac
+                                    if self._is_valid_mac(mac):
+                                        decky.logger.info(f"Found MAC {mac} for IP {ip_address} via /proc/net/arp")
+                                        return mac
+                                    else:
+                                        decky.logger.warning(f"Invalid MAC {mac} for IP {ip_address}")
             except Exception as e:
                 decky.logger.warning(f"Could not read /proc/net/arp: {e}")
             

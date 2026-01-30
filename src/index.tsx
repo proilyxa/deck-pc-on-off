@@ -326,6 +326,18 @@ function Content() {
 
   return (
     <PanelSection title="Wake on LAN">
+      <PanelSectionRow>
+        <ButtonItem
+          layout="below"
+          onClick={handleAdd}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }}>
+            <FaPlus />
+            <span>Add Host</span>
+          </div>
+        </ButtonItem>
+      </PanelSectionRow>
+      
       {hosts.length === 0 ? (
         <PanelSectionRow>
           <div style={{ padding: "10px", textAlign: "center", opacity: 0.7 }}>
@@ -335,8 +347,8 @@ function Content() {
       ) : (
         hosts.map((host) => {
           const isWaking = wakingHostId === host.id;
-          const displayName = host.name.length > 20 
-            ? host.name.substring(0, 20) + "..." 
+          const displayName = host.name.length > 15 
+            ? host.name.substring(0, 15) + ".." 
             : host.name;
           
           return (
@@ -385,42 +397,32 @@ function Content() {
                 </Focusable>
                 
                 <div style={{ 
-                  fontSize: "1em", 
-                  fontWeight: "500",
+                  fontSize: "0.95em", 
                   paddingLeft: "8px",
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis"
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px"
                 }}>
-                  {displayName}
-                </div>
-                
-                <div style={{ 
-                  fontSize: "0.85em", 
-                  opacity: 0.6,
-                  paddingLeft: "8px",
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis"
-                }}>
-                  {host.ip}
+                  <span style={{ 
+                    fontWeight: "500",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap"
+                  }}>
+                    {displayName}
+                  </span>
+                  <span style={{ 
+                    opacity: 0.6,
+                    flexShrink: 0
+                  }}>
+                    ({host.ip})
+                  </span>
                 </div>
               </Focusable>
             </PanelSectionRow>
           );
         })
       )}
-      <PanelSectionRow>
-        <ButtonItem
-          layout="below"
-          onClick={handleAdd}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", justifyContent: "center" }}>
-            <FaPlus />
-            <span>Add Host</span>
-          </div>
-        </ButtonItem>
-      </PanelSectionRow>
     </PanelSection>
   );
 };
