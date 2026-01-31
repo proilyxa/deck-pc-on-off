@@ -3,6 +3,8 @@ import json
 import socket
 import subprocess
 import re
+import urllib.request
+import urllib.error
 
 # The decky plugin module is located at decky-loader/plugin
 # For easy intellisense checkout the decky-loader code repo
@@ -156,14 +158,14 @@ class Plugin:
         self._load_hosts()
         return self.hosts
 
-    async def add_host(self, name: str, ip_address: str) -> dict:
+    async def add_host(self, name: str, ip_address: str, port: int = 9876) -> dict:
         """Add a new host"""
         try:
             if not name or not ip_address:
                 return {"success": False, "error": "Name and IP address are required"}
             
-            # Get MAC address from IP
-            mac_address = self._get_mac_from_ip(ip_address)
+            # Get MAC address from IP (run in thread pool to avoid blocking)
+            mac_address = await asyncio.to_thread(self._get_mac_from_ip, ip_address)
             
             # Generate new ID (starting from 1, avoiding duplicates)
             max_id = max([h["id"] for h in self.hosts], default=0)
@@ -173,17 +175,18 @@ class Plugin:
                 "id": new_id,
                 "name": name,
                 "ip": ip_address,
-                "mac": mac_address
+                "mac": mac_address,
+                "port": port
             }
             self.hosts.append(host)
             self._save_hosts()
-            decky.logger.info(f"Added host: {name} ({ip_address} -> {mac_address})")
+            decky.logger.info(f"Added host: {name} ({ip_address}:{port} -> {mac_address})")
             return {"success": True, "host": host}
         except Exception as e:
             decky.logger.error(f"Error adding host: {e}")
             return {"success": False, "error": str(e)}
 
-    async def update_host(self, host_id: int, name: str, ip_address: str) -> dict:
+    async def update_host(self, host_id: int, name: str, ip_address: str, port: int = 9876) -> dict:
         """Update an existing host"""
         try:
             self._load_hosts()
@@ -204,7 +207,8 @@ class Plugin:
             # Only get new MAC if IP changed
             if old_host["ip"] != ip_address:
                 decky.logger.info(f"IP changed from {old_host['ip']} to {ip_address}, getting new MAC")
-                mac_address = self._get_mac_from_ip(ip_address)
+                # Run in thread pool to avoid blocking
+                mac_address = await asyncio.to_thread(self._get_mac_from_ip, ip_address)
             else:
                 decky.logger.info(f"IP unchanged, keeping existing MAC {old_host.get('mac', 'N/A')}")
                 mac_address = old_host.get("mac", "")
@@ -216,7 +220,8 @@ class Plugin:
                         "id": host_id,
                         "name": name,
                         "ip": ip_address,
-                        "mac": mac_address
+                        "mac": mac_address,
+                        "port": port
                     }
                     self._save_hosts()
                     decky.logger.info(f"Updated host: {name}")
@@ -250,7 +255,8 @@ class Plugin:
             
             # Get current MAC address (in case IP changed)
             try:
-                mac_address = self._get_mac_from_ip(host["ip"])
+                # Run in thread pool to avoid blocking
+                mac_address = await asyncio.to_thread(self._get_mac_from_ip, host["ip"])
                 # Update stored MAC if different
                 if mac_address != host.get("mac"):
                     for i, h in enumerate(self.hosts):
@@ -286,6 +292,84 @@ class Plugin:
             
         except Exception as e:
             decky.logger.error(f"Error sending WOL packet: {e}")
+            return {"success": False, "error": str(e)}
+
+    def _ping_host_sync(self, host_ip: str, port: int, host_name: str) -> dict:
+        """Synchronous ping implementation"""
+        url = f"http://{host_ip}:{port}/ping"
+        try:
+            req = urllib.request.Request(url, method='GET')
+            with urllib.request.urlopen(req, timeout=3) as response:
+                if response.status == 200:
+                    decky.logger.debug(f"Ping successful for {host_name} ({host_ip}:{port})")
+                    return {"success": True, "online": True}
+                else:
+                    return {"success": False, "online": False}
+        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError) as e:
+            decky.logger.debug(f"Ping failed for {host_name}: {e}")
+            return {"success": False, "online": False, "error": str(e)}
+
+    async def ping_host(self, host_id: int) -> dict:
+        """Ping host to check if it's online (async)"""
+        try:
+            self._load_hosts()
+            host = next((h for h in self.hosts if h["id"] == host_id), None)
+            
+            if not host:
+                return {"success": False, "error": "Host not found", "online": False}
+            
+            port = host.get("port", 9876)
+            
+            # Run blocking HTTP request in thread pool
+            result = await asyncio.to_thread(
+                self._ping_host_sync,
+                host['ip'],
+                port,
+                host['name']
+            )
+            return result
+            
+        except Exception as e:
+            decky.logger.error(f"Error pinging host: {e}")
+            return {"success": False, "online": False, "error": str(e)}
+
+    def _shutdown_host_sync(self, host_ip: str, port: int, host_name: str) -> dict:
+        """Synchronous shutdown implementation"""
+        url = f"http://{host_ip}:{port}/shutdown"
+        try:
+            req = urllib.request.Request(url, method='GET')
+            with urllib.request.urlopen(req, timeout=3) as response:
+                if response.status == 200:
+                    decky.logger.info(f"Shutdown command sent to {host_name} ({host_ip}:{port})")
+                    return {"success": True, "message": f"Shutdown command sent to {host_name}"}
+                else:
+                    return {"success": False, "error": f"Server returned status {response.status}"}
+        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError) as e:
+            decky.logger.error(f"Shutdown failed for {host_name}: {e}")
+            return {"success": False, "error": f"Failed to connect to host: {str(e)}"}
+
+    async def shutdown_host(self, host_id: int) -> dict:
+        """Send shutdown command to host (async)"""
+        try:
+            self._load_hosts()
+            host = next((h for h in self.hosts if h["id"] == host_id), None)
+            
+            if not host:
+                return {"success": False, "error": "Host not found"}
+            
+            port = host.get("port", 9876)
+            
+            # Run blocking HTTP request in thread pool
+            result = await asyncio.to_thread(
+                self._shutdown_host_sync,
+                host['ip'],
+                port,
+                host['name']
+            )
+            return result
+            
+        except Exception as e:
+            decky.logger.error(f"Error shutting down host: {e}")
             return {"success": False, "error": str(e)}
 
     # Asyncio-compatible long-running code, executed in a task when the plugin is loaded
