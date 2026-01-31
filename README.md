@@ -2,6 +2,8 @@
 
 A Decky Loader plugin that allows you to wake up and shut down your PC directly from your Steam Deck.
 
+![PC On/Off Interface](assets/screenshot.png)
+
 ## Features
 
 - 💚 Send Wake-on-LAN packets to wake up devices
